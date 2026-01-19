@@ -1,0 +1,115 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Quận 1",
+        "district_code": "Q01",
+        "planning_zone": "Trung tâm thương mại - Dịch vụ",
+        "area": "7.73 km²",
+        "population": "204,899"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [106.688, 10.7669],
+            [106.708, 10.7669],
+            [106.708, 10.7869],
+            [106.688, 10.7869],
+            [106.688, 10.7669]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Quận 3",
+        "district_code": "Q03",
+        "planning_zone": "Khu dân cư - Giáo dục",
+        "area": "4.92 km²",
+        "population": "188,030"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [106.678, 10.7769],
+            [106.698, 10.7769],
+            [106.698, 10.7969],
+            [106.678, 10.7969],
+            [106.678, 10.7769]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Quận 5",
+        "district_code": "Q05",
+        "planning_zone": "Thương mại - Khu Chợ Lớn",
+        "area": "4.27 km²",
+        "population": "178,683"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [106.658, 10.7569],
+            [106.678, 10.7569],
+            [106.678, 10.7769],
+            [106.658, 10.7769],
+            [106.658, 10.7569]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Quận Bình Thạnh",
+        "district_code": "QBT",
+        "planning_zone": "Khu dân cư - Công nghiệp",
+        "area": "20.76 km²",
+        "population": "498,943"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [106.708, 10.7969],
+            [106.738, 10.7969],
+            [106.738, 10.8269],
+            [106.708, 10.8269],
+            [106.708, 10.7969]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Thành phố Thủ Đức",
+        "district_code": "TPTD",
+        "planning_zone": "Đô thị sáng tạo - Công nghệ cao",
+        "area": "211.53 km²",
+        "population": "1,200,000"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [106.738, 10.8069],
+            [106.778, 10.8069],
+            [106.778, 10.8569],
+            [106.738, 10.8569],
+            [106.738, 10.8069]
+          ]
+        ]
+      }
+    }
+  ]
+}
