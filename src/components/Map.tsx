@@ -9,9 +9,12 @@ import {
   useMap,
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import type { FeatureCollection, Feature } from "geojson";
 import L from "leaflet";
+import SearchBar from "./SearchBar";
+import MapLegend from "./MapLegend";
+import MapControls from "./MapControls";
 
 const { BaseLayer, Overlay } = LayersControl;
 
@@ -59,27 +62,23 @@ function SearchController({
 }
 
 export default function Map() {
-  const [provinceData, setProvinceData] = useState<FeatureCollection | null>(
-    null,
-  );
   const [districtData, setDistrictData] = useState<FeatureCollection | null>(
     null,
   );
+  const [provinceData, setProvinceData] = useState<FeatureCollection | null>(
+    null,
+  );
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchInput, setSearchInput] = useState("");
   const [highlightedFeature, setHighlightedFeature] = useState<Feature | null>(
     null,
   );
-  const [suggestions, setSuggestions] = useState<Feature[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Tọa độ trung tâm Việt Nam
   const vietnamCenter: [number, number] = [16.0, 106.0];
 
   useEffect(() => {
     // Fix cho Leaflet icon trong Next.js
-    delete L.Icon.Default.prototype._getIconUrl;
     L.Icon.Default.mergeOptions({
       iconRetinaUrl: "/leaflet/marker-icon-2x.png",
       iconUrl: "/leaflet/marker-icon.png",
@@ -99,74 +98,22 @@ export default function Map() {
       .catch((error) => console.error("Error loading district data:", error));
   }, []);
 
-  // Đóng suggestions khi click bên ngoài
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        searchRef.current &&
-        !searchRef.current.contains(event.target as Node)
-      ) {
-        setShowSuggestions(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // Cập nhật suggestions khi searchInput thay đổi
-  useEffect(() => {
-    if (!searchInput.trim() || !districtData) {
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-
-    const searchLower = searchInput.toLowerCase();
-    const filtered = districtData.features
-      .filter((feature) => {
-        const name = feature.properties?.shapeName?.toLowerCase() || "";
-        return name.includes(searchLower);
-      })
-      .slice(0, 8); // Giới hạn 8 suggestions
-
-    setSuggestions(filtered);
-    setShowSuggestions(filtered.length > 0);
-  }, [searchInput, districtData]);
-
-  const onEachProvinceFeature = (feature: Feature, layer: L.Layer) => {
-    if (feature.properties) {
-      const popupContent = `
-        <div>
-          <h3 class="font-bold text-lg">${feature.properties.shapeName || "Không rõ"}</h3>
-          <p class="text-sm">Mã ISO: ${feature.properties.shapeISO || "N/A"}</p>
-          <p class="text-xs text-gray-600">Cấp: Tỉnh/Thành phố</p>
-        </div>
-      `;
-      layer.bindPopup(popupContent);
-    }
-  };
-
   const onEachDistrictFeature = (feature: Feature, layer: L.Layer) => {
     if (feature.properties) {
       const popupContent = `
         <div>
           <h3 class="font-bold">${feature.properties.shapeName || "Không rõ"}</h3>
           <p class="text-xs text-gray-600">Cấp: Quận/Huyện</p>
+          <p class="text-xs text-blue-600 mt-1">Double-click để xem chi tiết</p>
         </div>
       `;
       layer.bindPopup(popupContent);
-    }
-  };
 
-  const provinceStyle = () => {
-    return {
-      color: "#dc2626",
-      weight: 2,
-      opacity: 0.8,
-      fillColor: "#fca5a5",
-      fillOpacity: 0.2,
-    };
+      // Handle double-click event
+      layer.on("dblclick", () => {
+        handleSuggestionClick(feature);
+      });
+    }
   };
 
   const districtStyle = (feature?: Feature) => {
@@ -175,112 +122,104 @@ export default function Map() {
       feature?.properties?.shapeID === highlightedFeature.properties?.shapeID;
 
     return {
-      color: isHighlighted ? "#fbbf24" : "#2563eb",
+      color: isHighlighted ? "#fbbf24" : "#fc26ee",
       weight: isHighlighted ? 3 : 1,
       opacity: isHighlighted ? 1 : 0.6,
-      fillColor: isHighlighted ? "#fde047" : "#93c5fd",
+      fillColor: isHighlighted ? "#fde047" : "#ffb5fa",
       fillOpacity: isHighlighted ? 0.5 : 0.15,
     };
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSearchQuery(searchInput);
-    setShowSuggestions(false);
+  const handleSearchQuery = (query: string) => {
+    setSearchQuery(query);
   };
 
   const handleSuggestionClick = (feature: Feature) => {
     const name = feature.properties?.shapeName || "";
-    setSearchInput(name);
     setSearchQuery(name);
-    setShowSuggestions(false);
+  };
+
+  const handleSidebarToggle = (collapsed: boolean) => {
+    setIsSidebarCollapsed(collapsed);
+  };
+
+  // Tìm tỉnh/thành phố chứa quận/huyện dựa trên tọa độ
+  const findProvinceForDistrict = (districtFeature: Feature): Feature | null => {
+    if (!provinceData || !districtFeature.geometry) return null;
+
+    // Lấy tọa độ trung tâm của district
+    const districtCoords = districtFeature.geometry as any;
+    let centerLat = 0;
+    let centerLng = 0;
+
+    if (districtCoords.type === "Polygon" && districtCoords.coordinates?.[0]) {
+      const coords = districtCoords.coordinates[0];
+      const lats = coords.map((c: number[]) => c[1]);
+      const lngs = coords.map((c: number[]) => c[0]);
+      centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+      centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+    }
+
+    // Tìm province chứa điểm này
+    for (const province of provinceData.features) {
+      const provinceGeom = province.geometry as any;
+      if (provinceGeom.type === "Polygon") {
+        if (isPointInPolygon([centerLng, centerLat], provinceGeom.coordinates[0])) {
+          return province;
+        }
+      }
+    }
+
+    return null;
+  };
+
+  // Helper function: kiểm tra điểm có nằm trong polygon không
+  const isPointInPolygon = (point: number[], polygon: number[][]): boolean => {
+    const [x, y] = point;
+    let inside = false;
+
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const [xi, yi] = polygon[i];
+      const [xj, yj] = polygon[j];
+
+      const intersect =
+        yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+
+      if (intersect) inside = !inside;
+    }
+
+    return inside;
+  };
+
+  // Lấy tất cả suggestions từ districtData
+  const getAllSuggestions = (): Feature[] => {
+    if (!districtData) return [];
+    return districtData.features;
   };
 
   return (
-    <div className="w-full h-[600px] rounded-lg overflow-hidden shadow-lg relative">
-      {/* Search Bar */}
+    <div className="w-full h-screen relative">
+      {/* Search Bar Component */}
+      <SearchBar
+        onSearch={handleSearchQuery}
+        suggestions={getAllSuggestions()}
+        onSuggestionClick={handleSuggestionClick}
+      />
+
+      {/* Map Legend Component */}
+      <MapLegend />
+
+      {/* Map Container - adjusts when sidebar is open */}
       <div
-        ref={searchRef}
-        className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[1000] w-full max-w-md px-4"
+        className={`h-full transition-all duration-300 ${
+          highlightedFeature
+            ? isSidebarCollapsed
+              ? "mr-12"
+              : "mr-96"
+            : "mr-0"
+        }`}
       >
-        <form
-          onSubmit={handleSearch}
-          className="bg-white rounded-xl shadow-2xl p-3 backdrop-blur-sm"
-        >
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-              placeholder="Tìm kiếm: Quận 1, Thành phố Hồ Chí Minh..."
-              className="flex-1 px-4 py-2.5 bg-gray-50 rounded-lg border border-gray-200 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
-            />
-            <button
-              type="submit"
-              className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all shadow-sm hover:shadow-md"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-            </button>
-          </div>
-        </form>
-
-        {/* Suggestions Dropdown */}
-        {showSuggestions && suggestions.length > 0 && (
-          <div className="mt-2 bg-white rounded-lg shadow-xl border border-gray-100 max-h-64 overflow-y-auto">
-            {suggestions.map((feature, index) => (
-              <button
-                key={feature.properties?.shapeID || index}
-                type="button"
-                onClick={() => handleSuggestionClick(feature)}
-                className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors border-b border-gray-100 last:border-b-0 flex items-center gap-2"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4 text-gray-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
-                </svg>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">
-                    {feature.properties?.shapeName}
-                  </p>
-                  <p className="text-xs text-gray-500">Quận/Huyện</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <MapContainer
+        <MapContainer
         center={vietnamCenter}
         zoom={6}
         scrollWheelZoom={true}
@@ -311,17 +250,6 @@ export default function Map() {
               />
             </LayerGroup>
           </BaseLayer>
-
-          <Overlay checked name="Tỉnh/Thành phố">
-            {provinceData && (
-              <GeoJSON
-                data={provinceData}
-                style={provinceStyle}
-                onEachFeature={onEachProvinceFeature}
-              />
-            )}
-          </Overlay>
-
           <Overlay checked name="Quận/Huyện">
             {districtData && (
               <GeoJSON
@@ -340,6 +268,16 @@ export default function Map() {
           onHighlight={setHighlightedFeature}
         />
       </MapContainer>
+      </div>
+
+      {/* Map Controls Sidebar - fixed position */}
+      <MapControls
+        highlightedFeature={highlightedFeature}
+        provinceFeature={
+          highlightedFeature ? findProvinceForDistrict(highlightedFeature) : null
+        }
+        onToggle={handleSidebarToggle}
+      />
     </div>
   );
 }
