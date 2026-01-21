@@ -12,11 +12,37 @@ import "leaflet/dist/leaflet.css";
 import { useEffect, useState } from "react";
 import type { FeatureCollection, Feature } from "geojson";
 import L from "leaflet";
+import * as esri from "esri-leaflet";
 import SearchBar from "./SearchBar";
 import MapLegend from "./MapLegend";
 import MapControls from "./MapControls";
 
 const { BaseLayer, Overlay } = LayersControl;
+
+// Component cho Vietnam Labels overlay
+function VietnamLabelsLayer() {
+  const map = useMap();
+
+  useEffect(() => {
+    const labelsLayer = esri.tiledMapLayer({
+      url: "https://tiles.arcgis.com/tiles/EaQ3hSM51DBnlwMq/arcgis/rest/services/VietnamLabels/MapServer",
+      pane: "overlayPane",
+    });
+
+    labelsLayer.addTo(map);
+
+    return () => {
+      map.removeLayer(labelsLayer);
+    };
+  }, [map]);
+
+  return null;
+}
+
+// Component wrapper để tích hợp với LayersControl
+function VietnamLabelsOverlay() {
+  return <VietnamLabelsLayer />;
+}
 
 // Component để điều khiển map từ bên ngoài
 function SearchController({
@@ -317,6 +343,9 @@ export default function Map() {
                 onEachFeature={onEachDistrictFeature}
               />
             )}
+          </Overlay>
+          <Overlay checked name="Nhãn Việt Nam">
+            <VietnamLabelsOverlay />
           </Overlay>
         </LayersControl>
 
