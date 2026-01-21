@@ -57,7 +57,7 @@ export default function MapControls({
   return (
     <div
       className={`fixed top-0 right-0 h-full bg-white shadow-2xl transition-all duration-300 z-1000 ${
-        isCollapsed ? "w-12" : "w-96"
+        isCollapsed ? "w-10" : "w-96"
       }`}
     >
       {/* Toggle Button */}
@@ -88,7 +88,7 @@ export default function MapControls({
       {!isCollapsed && (
         <div className="h-full overflow-y-auto">
           {/* Header */}
-          <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 shadow-md">
+          <div className="sticky top-0 bg-linear-to-r from-blue-600 to-blue-700 text-white p-4 shadow-md">
             <div className="flex items-start justify-between mb-2">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -97,19 +97,18 @@ export default function MapControls({
                 </span>
               </div>
             </div>
-            <h2 className="text-xl font-bold">
+            <h2 className="text-2xl font-bold">
               {highlightedFeature.properties?.shapeName || "Không rõ"}
             </h2>
-            <p className="text-xs text-blue-100 mt-1">
-              Mã: {highlightedFeature.properties?.shapeID || "N/A"}
-            </p>
             {provinceFeature && (
-              <div className="mt-2 pt-2 border-t border-blue-500/30">
-                <p className="text-xs text-blue-200 mb-1">Thuộc</p>
-                <p className="text-sm font-semibold text-white flex items-center gap-2">
+              <>
+                <p className="text-sm text-blue-200 mt-2 border-t border-blue-400 pt-2">
+                  Thuộc:
+                </p>
+                <p className="text-base text-blue-100 mt-1 inline-flex items-center gap-1.5">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4"
+                    className="h-5 w-5"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -121,21 +120,18 @@ export default function MapControls({
                       d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
                   </svg>
-                  {provinceFeature.properties?.shapeName || "Không xác định"}
+                  <span className="font-bold">
+                    {provinceFeature.properties?.shapeName || "Không xác định"}
+                  </span>
                 </p>
-                {provinceFeature.properties?.shapeISO && (
-                  <p className="text-xs text-blue-100 mt-1">
-                    ISO: {provinceFeature.properties.shapeISO}
-                  </p>
-                )}
-              </div>
+              </>
             )}
           </div>
 
           {/* Stats Cards */}
           <div className="p-4 space-y-4">
             {/* Tổng số nhà */}
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
+            <div className="bg-linear-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
                   <svg
@@ -159,67 +155,6 @@ export default function MapControls({
                   </p>
                   <p className="text-2xl font-bold text-gray-900">
                     {stats.totalHouses.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Dân số */}
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-6 w-6 text-white"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                    />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs text-gray-600 font-medium">Dân số</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {stats.population.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Diện tích & Mật độ */}
-            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-6 w-6 text-white"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"
-                    />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs text-gray-600 font-medium">
-                    Mật độ dân số
-                  </p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {stats.density.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    người/km² ({stats.area} km²)
                   </p>
                 </div>
               </div>
@@ -309,18 +244,12 @@ export default function MapControls({
                     Quận/Huyện
                   </span>
                 </div>
-                <div className="flex justify-between py-2 border-b border-gray-200">
+                <div className="flex justify-between py-2">
                   <span className="text-gray-600">Trung bình nhà/km²</span>
                   <span className="font-medium text-gray-900">
                     {Math.floor(
                       stats.totalHouses / parseFloat(stats.area),
                     ).toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between py-2">
-                  <span className="text-gray-600">Người/nhà</span>
-                  <span className="font-medium text-gray-900">
-                    {(stats.population / stats.totalHouses).toFixed(1)}
                   </span>
                 </div>
               </div>
@@ -332,7 +261,7 @@ export default function MapControls({
       {/* Collapsed State Icon */}
       {isCollapsed && (
         <div className="flex items-center justify-center h-full">
-          <div className="transform -rotate-90 text-gray-400 text-xs font-medium tracking-wider">
+          <div className="transform -rotate-90 text-gray-400 text-xs font-medium tracking-wider text-nowrap">
             THÔNG TIN
           </div>
         </div>

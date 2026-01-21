@@ -36,23 +36,55 @@ function SearchController({
       return;
     }
 
-    // Tìm kiếm district phù hợp
-    const searchLower = searchQuery.toLowerCase();
+    // Tìm kiếm district phù hợp CHÍNH XÁC
+    const searchLower = searchQuery.toLowerCase().trim();
     const found = districtData.features.find((feature) => {
-      const name = feature.properties?.shapeName?.toLowerCase() || "";
-      return name.includes(searchLower);
+      const name = feature.properties?.shapeName?.toLowerCase().trim() || "";
+      // Chỉ match khi tên khớp chính xác
+      return name === searchLower;
     });
 
-    if (found && found.geometry.type === "Polygon") {
+    if (found) {
       onHighlight(found);
-      // Tính center của polygon
-      const coords = found.geometry.coordinates[0];
-      const lats = coords.map((c) => c[1]);
-      const lngs = coords.map((c) => c[0]);
-      const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
-      const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+      
+      // Xử lý zoom và focus cho cả Polygon và MultiPolygon
+      const geometry = found.geometry;
+      let allCoords: number[][] = [];
 
-      map.flyTo([centerLat, centerLng], 11, { duration: 1.5 });
+      if (geometry.type === "Polygon") {
+        // Polygon đơn giản
+        allCoords = geometry.coordinates[0];
+      } else if (geometry.type === "MultiPolygon") {
+        // MultiPolygon (cho đảo và quần đảo)
+        // Lấy tất cả coordinates từ tất cả các polygon
+        geometry.coordinates.forEach((polygon) => {
+          allCoords = allCoords.concat(polygon[0]);
+        });
+      }
+
+      if (allCoords.length > 0) {
+        // Tính bounding box để fit tất cả các đảo
+        const lats = allCoords.map((c) => c[1]);
+        const lngs = allCoords.map((c) => c[0]);
+        
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        const minLng = Math.min(...lngs);
+        const maxLng = Math.max(...lngs);
+
+        // Tạo bounds và fit map vào bounds này
+        const bounds: L.LatLngBoundsExpression = [
+          [minLat, minLng],
+          [maxLat, maxLng],
+        ];
+
+        // FitBounds với padding để không bị cắt góc
+        map.flyToBounds(bounds, {
+          padding: [50, 50],
+          duration: 1.5,
+          maxZoom: 11,
+        });
+      }
     } else {
       onHighlight(null);
     }
@@ -147,25 +179,51 @@ export default function Map() {
   const findProvinceForDistrict = (districtFeature: Feature): Feature | null => {
     if (!provinceData || !districtFeature.geometry) return null;
 
-    // Lấy tọa độ trung tâm của district
-    const districtCoords = districtFeature.geometry as any;
-    let centerLat = 0;
-    let centerLng = 0;
+    // Lấy tọa độ trung tâm của district (hỗ trợ cả Polygon và MultiPolygon)
+    const districtGeom = districtFeature.geometry as any;
+    let testPoints: [number, number][] = [];
 
-    if (districtCoords.type === "Polygon" && districtCoords.coordinates?.[0]) {
-      const coords = districtCoords.coordinates[0];
+    if (districtGeom.type === "Polygon" && districtGeom.coordinates?.[0]) {
+      const coords = districtGeom.coordinates[0];
       const lats = coords.map((c: number[]) => c[1]);
       const lngs = coords.map((c: number[]) => c[0]);
-      centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
-      centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+      const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+      const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+      testPoints.push([centerLng, centerLat]);
+    } else if (districtGeom.type === "MultiPolygon" && districtGeom.coordinates) {
+      // Với MultiPolygon, lấy trung tâm của từng polygon để test
+      districtGeom.coordinates.forEach((polygon: number[][][]) => {
+        if (polygon[0]) {
+          const coords = polygon[0];
+          const lats = coords.map((c: number[]) => c[1]);
+          const lngs = coords.map((c: number[]) => c[0]);
+          const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+          const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+          testPoints.push([centerLng, centerLat]);
+        }
+      });
     }
 
-    // Tìm province chứa điểm này
+    if (testPoints.length === 0) return null;
+
+    // Tìm province chứa ít nhất một trong các điểm test (hỗ trợ cả Polygon và MultiPolygon)
     for (const province of provinceData.features) {
       const provinceGeom = province.geometry as any;
+      
       if (provinceGeom.type === "Polygon") {
-        if (isPointInPolygon([centerLng, centerLat], provinceGeom.coordinates[0])) {
-          return province;
+        for (const point of testPoints) {
+          if (isPointInPolygon(point, provinceGeom.coordinates[0])) {
+            return province;
+          }
+        }
+      } else if (provinceGeom.type === "MultiPolygon") {
+        // Kiểm tra từng polygon trong MultiPolygon
+        for (const polygon of provinceGeom.coordinates) {
+          for (const point of testPoints) {
+            if (isPointInPolygon(point, polygon[0])) {
+              return province;
+            }
+          }
         }
       }
     }
@@ -214,7 +272,7 @@ export default function Map() {
         className={`h-full transition-all duration-300 ${
           highlightedFeature
             ? isSidebarCollapsed
-              ? "mr-12"
+              ? "mr-10"
               : "mr-96"
             : "mr-0"
         }`}
@@ -228,8 +286,8 @@ export default function Map() {
         <LayersControl position="topright">
           <BaseLayer checked name="Bản đồ đường phố">
             <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://www.esri.com">Esri</a>'
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
             />
           </BaseLayer>
           <BaseLayer name="Vệ tinh">

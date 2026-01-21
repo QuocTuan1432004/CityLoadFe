@@ -6,7 +6,7 @@ export default function MapLegend() {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <div className="absolute bottom-20 left-4 z-1000">
+    <div className="absolute bottom-4 left-4 z-1000">
       <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-gray-200 overflow-hidden">
         {/* Header */}
         <button
