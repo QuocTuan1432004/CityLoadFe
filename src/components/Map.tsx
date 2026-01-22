@@ -32,12 +32,155 @@ export default function Map() {
   );
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [currentStyle, setCurrentStyle] = useState<"streets" | "satellite">("streets");
+  const [showDistrictLayer, setShowDistrictLayer] = useState(true);
   
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const districtLayersAdded = useRef(false);
 
   // Tọa độ trung tâm Việt Nam
   const vietnamCenter: [number, number] = [106.0, 16.0]; // [lng, lat] cho Mapbox
+
+  // Helper function: Add district layers to map
+  const addDistrictLayers = (mapInstance: mapboxgl.Map) => {
+    if (!districtData) return;
+
+    // Xóa layer và source cũ nếu có
+    if (mapInstance.getLayer("districts-fill")) {
+      mapInstance.removeLayer("districts-fill");
+    }
+    if (mapInstance.getLayer("districts-line")) {
+      mapInstance.removeLayer("districts-line");
+    }
+    if (mapInstance.getLayer("districts-highlight")) {
+      mapInstance.removeLayer("districts-highlight");
+    }
+    if (mapInstance.getLayer("districts-highlight-line")) {
+      mapInstance.removeLayer("districts-highlight-line");
+    }
+    if (mapInstance.getSource("districts")) {
+      mapInstance.removeSource("districts");
+    }
+
+    // Thêm GeoJSON source
+    mapInstance.addSource("districts", {
+      type: "geojson",
+      data: districtData,
+    });
+
+    // Thêm fill layer (màu nền)
+    mapInstance.addLayer({
+      id: "districts-fill",
+      type: "fill",
+      source: "districts",
+      layout: {
+        visibility: showDistrictLayer ? "visible" : "none",
+      },
+      paint: {
+        "fill-color": "#ffb5fa",
+        "fill-opacity": 0.15,
+      },
+    });
+
+    // Thêm line layer (viền)
+    mapInstance.addLayer({
+      id: "districts-line",
+      type: "line",
+      source: "districts",
+      layout: {
+        visibility: showDistrictLayer ? "visible" : "none",
+      },
+      paint: {
+        "line-color": "#fc26ee",
+        "line-width": 1,
+        "line-opacity": 0.6,
+      },
+    });
+
+    // Thêm highlight layer (sẽ filter sau)
+    mapInstance.addLayer({
+      id: "districts-highlight",
+      type: "fill",
+      source: "districts",
+      layout: {
+        visibility: showDistrictLayer ? "visible" : "none",
+      },
+      paint: {
+        "fill-color": "#fde047",
+        "fill-opacity": 0.5,
+      },
+      filter: ["==", "shapeID", ""],
+    });
+
+    mapInstance.addLayer({
+      id: "districts-highlight-line",
+      type: "line",
+      source: "districts",
+      layout: {
+        visibility: showDistrictLayer ? "visible" : "none",
+      },
+      paint: {
+        "line-color": "#fbbf24",
+        "line-width": 3,
+        "line-opacity": 1,
+      },
+      filter: ["==", "shapeID", ""],
+    });
+
+    // Click event cho districts
+    mapInstance.on("click", "districts-fill", (e) => {
+      if (e.features && e.features.length > 0) {
+        const feature = e.features[0] as any;
+        handleSuggestionClick(feature);
+      }
+    });
+
+    // Double click event cho districts
+    mapInstance.on("dblclick", "districts-fill", (e) => {
+      if (e.features && e.features.length > 0) {
+        const feature = e.features[0] as any;
+        handleSuggestionClick(feature);
+      }
+    });
+
+    // Thay đổi cursor khi hover
+    mapInstance.on("mouseenter", "districts-fill", () => {
+      mapInstance.getCanvas().style.cursor = "pointer";
+    });
+
+    mapInstance.on("mouseleave", "districts-fill", () => {
+      mapInstance.getCanvas().style.cursor = "";
+    });
+
+    // Popup khi hover
+    const popup = new mapboxgl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+    });
+
+    mapInstance.on("mouseenter", "districts-fill", (e) => {
+      if (e.features && e.features.length > 0) {
+        const feature = e.features[0];
+        const coordinates = e.lngLat;
+        const name = feature.properties?.shapeName || "Không rõ";
+
+        popup
+          .setLngLat(coordinates)
+          .setHTML(
+            `<div>
+              <h3 class="font-bold">${name}</h3>
+              <p class="text-xs text-gray-600">Cấp: Quận/Huyện</p>
+              <p class="text-xs text-blue-600 mt-1">Double-click để xem chi tiết</p>
+            </div>`
+          )
+          .addTo(mapInstance);
+      }
+    });
+
+    mapInstance.on("mouseleave", "districts-fill", () => {
+      popup.remove();
+    });
+  };
 
   useEffect(() => {
     if (!mapContainer.current) return;
@@ -75,142 +218,58 @@ export default function Map() {
     };
   }, []);
 
+  // Lắng nghe sự kiện style.load để re-add district layers khi đổi map style
+  useEffect(() => {
+    if (!map.current) return;
+
+    const handleStyleLoad = () => {
+      if (map.current && districtData) {
+        addDistrictLayers(map.current);
+      }
+    };
+
+    map.current.on("style.load", handleStyleLoad);
+
+    return () => {
+      if (map.current) {
+        map.current.off("style.load", handleStyleLoad);
+      }
+    };
+  }, [districtData, showDistrictLayer]);
+
   // Vẽ layer Quận/Huyện bằng Mapbox khi districtData đã load
   useEffect(() => {
     if (!map.current || !districtData) return;
     
     const mapInstance = map.current;
 
-    // Đợi map load xong
-    const addDistrictLayer = () => {
-      // Xóa layer và source cũ nếu có
-      if (mapInstance.getLayer("districts-fill")) {
-        mapInstance.removeLayer("districts-fill");
-      }
-      if (mapInstance.getLayer("districts-line")) {
-        mapInstance.removeLayer("districts-line");
-      }
-      if (mapInstance.getLayer("districts-highlight")) {
-        mapInstance.removeLayer("districts-highlight");
-      }
-      if (mapInstance.getSource("districts")) {
-        mapInstance.removeSource("districts");
-      }
-
-      // Thêm GeoJSON source
-      mapInstance.addSource("districts", {
-        type: "geojson",
-        data: districtData,
-      });
-
-      // Thêm fill layer (màu nền)
-      mapInstance.addLayer({
-        id: "districts-fill",
-        type: "fill",
-        source: "districts",
-        paint: {
-          "fill-color": "#ffb5fa",
-          "fill-opacity": 0.15,
-        },
-      });
-
-      // Thêm line layer (viền)
-      mapInstance.addLayer({
-        id: "districts-line",
-        type: "line",
-        source: "districts",
-        paint: {
-          "line-color": "#fc26ee",
-          "line-width": 1,
-          "line-opacity": 0.6,
-        },
-      });
-
-      // Thêm highlight layer (sẽ filter sau)
-      mapInstance.addLayer({
-        id: "districts-highlight",
-        type: "fill",
-        source: "districts",
-        paint: {
-          "fill-color": "#fde047",
-          "fill-opacity": 0.5,
-        },
-        filter: ["==", "shapeID", ""],
-      });
-
-      mapInstance.addLayer({
-        id: "districts-highlight-line",
-        type: "line",
-        source: "districts",
-        paint: {
-          "line-color": "#fbbf24",
-          "line-width": 3,
-          "line-opacity": 1,
-        },
-        filter: ["==", "shapeID", ""],
-      });
-
-      // Click event cho districts
-      mapInstance.on("click", "districts-fill", (e) => {
-        if (e.features && e.features.length > 0) {
-          const feature = e.features[0] as any;
-          handleSuggestionClick(feature);
-        }
-      });
-
-      // Double click event cho districts
-      mapInstance.on("dblclick", "districts-fill", (e) => {
-        if (e.features && e.features.length > 0) {
-          const feature = e.features[0] as any;
-          handleSuggestionClick(feature);
-        }
-      });
-
-      // Thay đổi cursor khi hover
-      mapInstance.on("mouseenter", "districts-fill", () => {
-        mapInstance.getCanvas().style.cursor = "pointer";
-      });
-
-      mapInstance.on("mouseleave", "districts-fill", () => {
-        mapInstance.getCanvas().style.cursor = "";
-      });
-
-      // Popup khi hover
-      const popup = new mapboxgl.Popup({
-        closeButton: false,
-        closeOnClick: false,
-      });
-
-      mapInstance.on("mouseenter", "districts-fill", (e) => {
-        if (e.features && e.features.length > 0) {
-          const feature = e.features[0];
-          const coordinates = e.lngLat;
-          const name = feature.properties?.shapeName || "Không rõ";
-
-          popup
-            .setLngLat(coordinates)
-            .setHTML(
-              `<div>
-                <h3 class="font-bold">${name}</h3>
-                <p class="text-xs text-gray-600">Cấp: Quận/Huyện</p>
-                <p class="text-xs text-blue-600 mt-1">Double-click để xem chi tiết</p>
-              </div>`
-            )
-            .addTo(mapInstance);
-        }
-      });
-
-      mapInstance.on("mouseleave", "districts-fill", () => {
-        popup.remove();
-      });
-    };
-
     if (mapInstance.isStyleLoaded()) {
-      addDistrictLayer();
+      addDistrictLayers(mapInstance);
     } else {
-      mapInstance.once("load", addDistrictLayer);
+      mapInstance.once("load", () => addDistrictLayers(mapInstance));
     }
-  }, [districtData]);
+  }, [districtData, showDistrictLayer]);
+
+  // Toggle visibility của district layer khi showDistrictLayer thay đổi
+  useEffect(() => {
+    if (!map.current) return;
+    
+    const mapInstance = map.current;
+    const visibility = showDistrictLayer ? "visible" : "none";
+
+    if (mapInstance.getLayer("districts-fill")) {
+      mapInstance.setLayoutProperty("districts-fill", "visibility", visibility);
+    }
+    if (mapInstance.getLayer("districts-line")) {
+      mapInstance.setLayoutProperty("districts-line", "visibility", visibility);
+    }
+    if (mapInstance.getLayer("districts-highlight")) {
+      mapInstance.setLayoutProperty("districts-highlight", "visibility", visibility);
+    }
+    if (mapInstance.getLayer("districts-highlight-line")) {
+      mapInstance.setLayoutProperty("districts-highlight-line", "visibility", visibility);
+    }
+  }, [showDistrictLayer]);
 
   // Update highlight khi highlightedFeature thay đổi
   useEffect(() => {
@@ -379,6 +438,34 @@ export default function Map() {
     return districtData.features;
   };
 
+  // Toggle map style giữa Streets và Satellite
+  const toggleMapStyle = () => {
+    if (!map.current) return;
+    
+    const newStyle = currentStyle === "streets" ? "satellite" : "streets";
+    setCurrentStyle(newStyle);
+    
+    // Lưu center và zoom hiện tại
+    const center = map.current.getCenter();
+    const zoom = map.current.getZoom();
+    
+    // Đổi style
+    map.current.setStyle(GOONG_MAP_STYLES[newStyle]);
+    
+    // Sau khi đổi style, giữ nguyên center và zoom
+    map.current.once("style.load", () => {
+      if (map.current) {
+        map.current.setCenter(center);
+        map.current.setZoom(zoom);
+      }
+    });
+  };
+
+  // Toggle district layer visibility
+  const toggleDistrictLayer = () => {
+    setShowDistrictLayer(!showDistrictLayer);
+  };
+
   return (
     <div className="w-full h-screen relative">
       {/* Search Bar Component */}
@@ -390,6 +477,29 @@ export default function Map() {
 
       {/* Map Legend Component */}
       <MapLegend />
+
+      {/* Map Style Toggle Button - Top Right */}
+      <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
+        <button
+          onClick={toggleMapStyle}
+          className="bg-white hover:bg-gray-100 text-gray-800 font-semibold py-2 px-4 rounded shadow-lg transition-colors"
+          title={currentStyle === "streets" ? "Chuyển sang Vệ tinh" : "Chuyển sang Đường phố"}
+        >
+          {currentStyle === "streets" ? "🛰️ Vệ tinh" : "🗺️ Đường phố"}
+        </button>
+        
+        <button
+          onClick={toggleDistrictLayer}
+          className={`${
+            showDistrictLayer 
+              ? "bg-pink-500 hover:bg-pink-600 text-white" 
+              : "bg-white hover:bg-gray-100 text-gray-800"
+          } font-semibold py-2 px-4 rounded shadow-lg transition-colors`}
+          title={showDistrictLayer ? "Ẩn Quận/Huyện" : "Hiện Quận/Huyện"}
+        >
+          {showDistrictLayer ? "✓ Quận/Huyện" : "Quận/Huyện"}
+        </button>
+      </div>
 
       {/* Map Container - adjusts when sidebar is open */}
       <div
