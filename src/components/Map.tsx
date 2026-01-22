@@ -6,7 +6,8 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import SearchBar from "./SearchBar";
 import MapLegend from "./MapLegend";
-import MapControls from "./MapControls";
+import InfoSidebar from "./InfoSidebar";
+import MapStyleControls from "./MapStyleControls";
 
 // Khởi tạo Mapbox access token
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
@@ -42,7 +43,7 @@ export default function Map() {
   const vietnamCenter: [number, number] = [106.0, 16.0]; // [lng, lat] cho Mapbox
 
   // Helper function: Add district layers to map
-  const addDistrictLayers = (mapInstance: mapboxgl.Map) => {
+  const addDistrictLayers = (mapInstance: mapboxgl.Map, isVisible: boolean = true) => {
     if (!districtData) return;
 
     // Xóa layer và source cũ nếu có
@@ -74,7 +75,7 @@ export default function Map() {
       type: "fill",
       source: "districts",
       layout: {
-        visibility: showDistrictLayer ? "visible" : "none",
+        visibility: isVisible ? "visible" : "none",
       },
       paint: {
         "fill-color": "#ffb5fa",
@@ -88,7 +89,7 @@ export default function Map() {
       type: "line",
       source: "districts",
       layout: {
-        visibility: showDistrictLayer ? "visible" : "none",
+        visibility: isVisible ? "visible" : "none",
       },
       paint: {
         "line-color": "#fc26ee",
@@ -103,7 +104,7 @@ export default function Map() {
       type: "fill",
       source: "districts",
       layout: {
-        visibility: showDistrictLayer ? "visible" : "none",
+        visibility: isVisible ? "visible" : "none",
       },
       paint: {
         "fill-color": "#fde047",
@@ -117,7 +118,7 @@ export default function Map() {
       type: "line",
       source: "districts",
       layout: {
-        visibility: showDistrictLayer ? "visible" : "none",
+        visibility: isVisible ? "visible" : "none",
       },
       paint: {
         "line-color": "#fbbf24",
@@ -195,7 +196,7 @@ export default function Map() {
     });
 
     // Thêm navigation controls
-    map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
+    map.current.addControl(new mapboxgl.NavigationControl(), "top-left");
 
     // Load dữ liệu tỉnh/thành phố
     fetch("/data/province_city_list.geojson")
@@ -223,8 +224,9 @@ export default function Map() {
     if (!map.current) return;
 
     const handleStyleLoad = () => {
-      if (map.current && districtData) {
-        addDistrictLayers(map.current);
+      if (map.current && districtData && showDistrictLayer) {
+        // Chỉ add layers khi showDistrictLayer === true
+        addDistrictLayers(map.current, showDistrictLayer);
       }
     };
 
@@ -244,9 +246,9 @@ export default function Map() {
     const mapInstance = map.current;
 
     if (mapInstance.isStyleLoaded()) {
-      addDistrictLayers(mapInstance);
+      addDistrictLayers(mapInstance, showDistrictLayer);
     } else {
-      mapInstance.once("load", () => addDistrictLayers(mapInstance));
+      mapInstance.once("load", () => addDistrictLayers(mapInstance, showDistrictLayer));
     }
   }, [districtData, showDistrictLayer]);
 
@@ -277,15 +279,25 @@ export default function Map() {
 
     const mapInstance = map.current;
 
-    if (mapInstance.getLayer("districts-highlight")) {
-      if (highlightedFeature) {
-        const shapeID = highlightedFeature.properties?.shapeID || "";
-        mapInstance.setFilter("districts-highlight", ["==", "shapeID", shapeID]);
-        mapInstance.setFilter("districts-highlight-line", ["==", "shapeID", shapeID]);
-      } else {
-        mapInstance.setFilter("districts-highlight", ["==", "shapeID", ""]);
-        mapInstance.setFilter("districts-highlight-line", ["==", "shapeID", ""]);
+    // Đợi một chút để đảm bảo layers đã được add sau khi style.load
+    const updateHighlight = () => {
+      if (mapInstance.getLayer("districts-highlight")) {
+        if (highlightedFeature) {
+          const shapeID = highlightedFeature.properties?.shapeID || "";
+          mapInstance.setFilter("districts-highlight", ["==", "shapeID", shapeID]);
+          mapInstance.setFilter("districts-highlight-line", ["==", "shapeID", shapeID]);
+        } else {
+          mapInstance.setFilter("districts-highlight", ["==", "shapeID", ""]);
+          mapInstance.setFilter("districts-highlight-line", ["==", "shapeID", ""]);
+        }
       }
+    };
+
+    // Nếu map đang load style, đợi load xong rồi mới update
+    if (mapInstance.isStyleLoaded()) {
+      updateHighlight();
+    } else {
+      mapInstance.once("idle", updateHighlight);
     }
   }, [highlightedFeature]);
 
@@ -478,27 +490,22 @@ export default function Map() {
       {/* Map Legend Component */}
       <MapLegend />
 
-      {/* Map Style Toggle Button - Top Right */}
-      <div className="absolute top-4 right-4 z-10 flex flex-col gap-2">
-        <button
-          onClick={toggleMapStyle}
-          className="bg-white hover:bg-gray-100 text-gray-800 font-semibold py-2 px-4 rounded shadow-lg transition-colors"
-          title={currentStyle === "streets" ? "Chuyển sang Vệ tinh" : "Chuyển sang Đường phố"}
-        >
-          {currentStyle === "streets" ? "🛰️ Vệ tinh" : "🗺️ Đường phố"}
-        </button>
-        
-        <button
-          onClick={toggleDistrictLayer}
-          className={`${
-            showDistrictLayer 
-              ? "bg-pink-500 hover:bg-pink-600 text-white" 
-              : "bg-white hover:bg-gray-100 text-gray-800"
-          } font-semibold py-2 px-4 rounded shadow-lg transition-colors`}
-          title={showDistrictLayer ? "Ẩn Quận/Huyện" : "Hiện Quận/Huyện"}
-        >
-          {showDistrictLayer ? "✓ Quận/Huyện" : "Quận/Huyện"}
-        </button>
+      {/* Map Style Controls - Top Right, adjusts when sidebar is open */}
+      <div
+        className={`absolute top-3 z-10 transition-all duration-300 ${
+          highlightedFeature
+            ? isSidebarCollapsed
+              ? "right-13"
+              : "right-100"
+            : "right-3"
+        }`}
+      >
+        <MapStyleControls
+          currentStyle={currentStyle}
+          showDistrictLayer={showDistrictLayer}
+          onToggleStyle={toggleMapStyle}
+          onToggleDistrictLayer={toggleDistrictLayer}
+        />
       </div>
 
       {/* Map Container - adjusts when sidebar is open */}
@@ -514,8 +521,8 @@ export default function Map() {
         <div ref={mapContainer} className="h-full w-full" />
       </div>
 
-      {/* Map Controls Sidebar - fixed position */}
-      <MapControls
+      {/* Info Sidebar - fixed position */}
+      <InfoSidebar
         highlightedFeature={highlightedFeature}
         provinceFeature={
           highlightedFeature ? findProvinceForDistrict(highlightedFeature) : null

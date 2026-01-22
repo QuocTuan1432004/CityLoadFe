@@ -2,17 +2,17 @@
 
 import { useState } from "react";
 
-interface MapControlsProps {
+interface InfoSidebarProps {
   highlightedFeature: any;
   provinceFeature: any;
   onToggle?: (collapsed: boolean) => void;
 }
 
-export default function MapControls({
+export default function InfoSidebar({
   highlightedFeature,
   provinceFeature,
   onToggle,
-}: MapControlsProps) {
+}: InfoSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   if (!highlightedFeature) return null;

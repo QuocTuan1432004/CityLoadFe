@@ -67,7 +67,7 @@ export default function SearchBar({
   return (
     <div
       ref={searchRef}
-      className="absolute top-4 left-14 z-1000 w-full max-w-sm"
+      className="absolute top-3 left-12 z-1000 w-full max-w-sm"
     >
       <div className="relative">
         {/* Input với icon tìm kiếm */}
@@ -80,7 +80,7 @@ export default function SearchBar({
               filteredSuggestions.length > 0 && setShowSuggestions(true)
             }
             placeholder="Tìm kiếm quận, huyện..."
-            className="w-full pl-11 pr-4 py-3 bg-white/95 backdrop-blur-md rounded-xl border border-gray-200 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-lg text-sm"
+            className="w-full pl-11 pr-4 py-3 bg-white backdrop-blur-sm rounded-xl border border-gray-200 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all shadow-lg text-sm"
           />
           <svg
             xmlns="http://www.w3.org/2000/svg"
