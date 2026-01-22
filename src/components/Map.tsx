@@ -1,123 +1,23 @@
 "use client";
 
-import {
-  MapContainer,
-  TileLayer,
-  GeoJSON,
-  LayersControl,
-  LayerGroup,
-  useMap,
-} from "react-leaflet";
-import "leaflet/dist/leaflet.css";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import type { FeatureCollection, Feature } from "geojson";
-import L from "leaflet";
-import * as esri from "esri-leaflet";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
 import SearchBar from "./SearchBar";
 import MapLegend from "./MapLegend";
 import MapControls from "./MapControls";
 
-const { BaseLayer, Overlay } = LayersControl;
+// Khởi tạo Mapbox access token
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
 
-// Component cho Vietnam Labels overlay
-function VietnamLabelsLayer() {
-  const map = useMap();
+// Goong Map Styles URLs
+const GOONG_MAPTILES_KEY = process.env.NEXT_PUBLIC_GOONG_MAPTILES_KEY;
 
-  useEffect(() => {
-    const labelsLayer = esri.tiledMapLayer({
-      url: "https://tiles.arcgis.com/tiles/EaQ3hSM51DBnlwMq/arcgis/rest/services/VietnamLabels/MapServer",
-      pane: "overlayPane",
-    });
-
-    labelsLayer.addTo(map);
-
-    return () => {
-      map.removeLayer(labelsLayer);
-    };
-  }, [map]);
-
-  return null;
-}
-
-// Component wrapper để tích hợp với LayersControl
-function VietnamLabelsOverlay() {
-  return <VietnamLabelsLayer />;
-}
-
-// Component để điều khiển map từ bên ngoài
-function SearchController({
-  searchQuery,
-  districtData,
-  onHighlight,
-}: {
-  searchQuery: string;
-  districtData: FeatureCollection | null;
-  onHighlight: (feature: Feature | null) => void;
-}) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!searchQuery || !districtData) {
-      onHighlight(null);
-      return;
-    }
-
-    // Tìm kiếm district phù hợp CHÍNH XÁC
-    const searchLower = searchQuery.toLowerCase().trim();
-    const found = districtData.features.find((feature) => {
-      const name = feature.properties?.shapeName?.toLowerCase().trim() || "";
-      // Chỉ match khi tên khớp chính xác
-      return name === searchLower;
-    });
-
-    if (found) {
-      onHighlight(found);
-      
-      // Xử lý zoom và focus cho cả Polygon và MultiPolygon
-      const geometry = found.geometry;
-      let allCoords: number[][] = [];
-
-      if (geometry.type === "Polygon") {
-        // Polygon đơn giản
-        allCoords = geometry.coordinates[0];
-      } else if (geometry.type === "MultiPolygon") {
-        // MultiPolygon (cho đảo và quần đảo)
-        // Lấy tất cả coordinates từ tất cả các polygon
-        geometry.coordinates.forEach((polygon) => {
-          allCoords = allCoords.concat(polygon[0]);
-        });
-      }
-
-      if (allCoords.length > 0) {
-        // Tính bounding box để fit tất cả các đảo
-        const lats = allCoords.map((c) => c[1]);
-        const lngs = allCoords.map((c) => c[0]);
-        
-        const minLat = Math.min(...lats);
-        const maxLat = Math.max(...lats);
-        const minLng = Math.min(...lngs);
-        const maxLng = Math.max(...lngs);
-
-        // Tạo bounds và fit map vào bounds này
-        const bounds: L.LatLngBoundsExpression = [
-          [minLat, minLng],
-          [maxLat, maxLng],
-        ];
-
-        // FitBounds với padding để không bị cắt góc
-        map.flyToBounds(bounds, {
-          padding: [50, 50],
-          duration: 1.5,
-          maxZoom: 11,
-        });
-      }
-    } else {
-      onHighlight(null);
-    }
-  }, [searchQuery, districtData, map, onHighlight]);
-
-  return null;
-}
+const GOONG_MAP_STYLES = {
+  streets: `https://tiles.goong.io/assets/goong_map_web.json?api_key=${GOONG_MAPTILES_KEY}`,
+  satellite: `https://tiles.goong.io/assets/goong_satellite.json?api_key=${GOONG_MAPTILES_KEY}`,
+};
 
 export default function Map() {
   const [districtData, setDistrictData] = useState<FeatureCollection | null>(
@@ -131,17 +31,28 @@ export default function Map() {
     null,
   );
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [currentStyle, setCurrentStyle] = useState<"streets" | "satellite">("streets");
+  
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const map = useRef<mapboxgl.Map | null>(null);
 
   // Tọa độ trung tâm Việt Nam
-  const vietnamCenter: [number, number] = [16.0, 106.0];
+  const vietnamCenter: [number, number] = [106.0, 16.0]; // [lng, lat] cho Mapbox
 
   useEffect(() => {
-    // Fix cho Leaflet icon trong Next.js
-    L.Icon.Default.mergeOptions({
-      iconRetinaUrl: "/leaflet/marker-icon-2x.png",
-      iconUrl: "/leaflet/marker-icon.png",
-      shadowUrl: "/leaflet/marker-shadow.png",
+    if (!mapContainer.current) return;
+    if (map.current) return; // Chỉ khởi tạo map một lần
+
+    // Khởi tạo Mapbox map với Goong style
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: GOONG_MAP_STYLES.streets,
+      center: vietnamCenter,
+      zoom: 5.5,
     });
+
+    // Thêm navigation controls
+    map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
 
     // Load dữ liệu tỉnh/thành phố
     fetch("/data/province_city_list.geojson")
@@ -154,39 +65,226 @@ export default function Map() {
       .then((res) => res.json())
       .then((data) => setDistrictData(data))
       .catch((error) => console.error("Error loading district data:", error));
+
+    // Cleanup
+    return () => {
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+      }
+    };
   }, []);
 
-  const onEachDistrictFeature = (feature: Feature, layer: L.Layer) => {
-    if (feature.properties) {
-      const popupContent = `
-        <div>
-          <h3 class="font-bold">${feature.properties.shapeName || "Không rõ"}</h3>
-          <p class="text-xs text-gray-600">Cấp: Quận/Huyện</p>
-          <p class="text-xs text-blue-600 mt-1">Double-click để xem chi tiết</p>
-        </div>
-      `;
-      layer.bindPopup(popupContent);
+  // Vẽ layer Quận/Huyện bằng Mapbox khi districtData đã load
+  useEffect(() => {
+    if (!map.current || !districtData) return;
+    
+    const mapInstance = map.current;
 
-      // Handle double-click event
-      layer.on("dblclick", () => {
-        handleSuggestionClick(feature);
+    // Đợi map load xong
+    const addDistrictLayer = () => {
+      // Xóa layer và source cũ nếu có
+      if (mapInstance.getLayer("districts-fill")) {
+        mapInstance.removeLayer("districts-fill");
+      }
+      if (mapInstance.getLayer("districts-line")) {
+        mapInstance.removeLayer("districts-line");
+      }
+      if (mapInstance.getLayer("districts-highlight")) {
+        mapInstance.removeLayer("districts-highlight");
+      }
+      if (mapInstance.getSource("districts")) {
+        mapInstance.removeSource("districts");
+      }
+
+      // Thêm GeoJSON source
+      mapInstance.addSource("districts", {
+        type: "geojson",
+        data: districtData,
       });
-    }
-  };
 
-  const districtStyle = (feature?: Feature) => {
-    const isHighlighted =
-      highlightedFeature &&
-      feature?.properties?.shapeID === highlightedFeature.properties?.shapeID;
+      // Thêm fill layer (màu nền)
+      mapInstance.addLayer({
+        id: "districts-fill",
+        type: "fill",
+        source: "districts",
+        paint: {
+          "fill-color": "#ffb5fa",
+          "fill-opacity": 0.15,
+        },
+      });
 
-    return {
-      color: isHighlighted ? "#fbbf24" : "#fc26ee",
-      weight: isHighlighted ? 3 : 1,
-      opacity: isHighlighted ? 1 : 0.6,
-      fillColor: isHighlighted ? "#fde047" : "#ffb5fa",
-      fillOpacity: isHighlighted ? 0.5 : 0.15,
+      // Thêm line layer (viền)
+      mapInstance.addLayer({
+        id: "districts-line",
+        type: "line",
+        source: "districts",
+        paint: {
+          "line-color": "#fc26ee",
+          "line-width": 1,
+          "line-opacity": 0.6,
+        },
+      });
+
+      // Thêm highlight layer (sẽ filter sau)
+      mapInstance.addLayer({
+        id: "districts-highlight",
+        type: "fill",
+        source: "districts",
+        paint: {
+          "fill-color": "#fde047",
+          "fill-opacity": 0.5,
+        },
+        filter: ["==", "shapeID", ""],
+      });
+
+      mapInstance.addLayer({
+        id: "districts-highlight-line",
+        type: "line",
+        source: "districts",
+        paint: {
+          "line-color": "#fbbf24",
+          "line-width": 3,
+          "line-opacity": 1,
+        },
+        filter: ["==", "shapeID", ""],
+      });
+
+      // Click event cho districts
+      mapInstance.on("click", "districts-fill", (e) => {
+        if (e.features && e.features.length > 0) {
+          const feature = e.features[0] as any;
+          handleSuggestionClick(feature);
+        }
+      });
+
+      // Double click event cho districts
+      mapInstance.on("dblclick", "districts-fill", (e) => {
+        if (e.features && e.features.length > 0) {
+          const feature = e.features[0] as any;
+          handleSuggestionClick(feature);
+        }
+      });
+
+      // Thay đổi cursor khi hover
+      mapInstance.on("mouseenter", "districts-fill", () => {
+        mapInstance.getCanvas().style.cursor = "pointer";
+      });
+
+      mapInstance.on("mouseleave", "districts-fill", () => {
+        mapInstance.getCanvas().style.cursor = "";
+      });
+
+      // Popup khi hover
+      const popup = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+      });
+
+      mapInstance.on("mouseenter", "districts-fill", (e) => {
+        if (e.features && e.features.length > 0) {
+          const feature = e.features[0];
+          const coordinates = e.lngLat;
+          const name = feature.properties?.shapeName || "Không rõ";
+
+          popup
+            .setLngLat(coordinates)
+            .setHTML(
+              `<div>
+                <h3 class="font-bold">${name}</h3>
+                <p class="text-xs text-gray-600">Cấp: Quận/Huyện</p>
+                <p class="text-xs text-blue-600 mt-1">Double-click để xem chi tiết</p>
+              </div>`
+            )
+            .addTo(mapInstance);
+        }
+      });
+
+      mapInstance.on("mouseleave", "districts-fill", () => {
+        popup.remove();
+      });
     };
-  };
+
+    if (mapInstance.isStyleLoaded()) {
+      addDistrictLayer();
+    } else {
+      mapInstance.once("load", addDistrictLayer);
+    }
+  }, [districtData]);
+
+  // Update highlight khi highlightedFeature thay đổi
+  useEffect(() => {
+    if (!map.current) return;
+
+    const mapInstance = map.current;
+
+    if (mapInstance.getLayer("districts-highlight")) {
+      if (highlightedFeature) {
+        const shapeID = highlightedFeature.properties?.shapeID || "";
+        mapInstance.setFilter("districts-highlight", ["==", "shapeID", shapeID]);
+        mapInstance.setFilter("districts-highlight-line", ["==", "shapeID", shapeID]);
+      } else {
+        mapInstance.setFilter("districts-highlight", ["==", "shapeID", ""]);
+        mapInstance.setFilter("districts-highlight-line", ["==", "shapeID", ""]);
+      }
+    }
+  }, [highlightedFeature]);
+
+  // Handle search query và zoom
+  useEffect(() => {
+    if (!map.current || !searchQuery || !districtData) {
+      if (!searchQuery) {
+        setHighlightedFeature(null);
+      }
+      return;
+    }
+
+    const searchLower = searchQuery.toLowerCase().trim();
+    const found = districtData.features.find((feature) => {
+      const name = feature.properties?.shapeName?.toLowerCase().trim() || "";
+      return name === searchLower;
+    });
+
+    if (found) {
+      setHighlightedFeature(found);
+
+      // Xử lý zoom và focus cho cả Polygon và MultiPolygon
+      const geometry = found.geometry as any;
+      let allCoords: number[][] = [];
+
+      if (geometry.type === "Polygon") {
+        allCoords = geometry.coordinates[0];
+      } else if (geometry.type === "MultiPolygon") {
+        geometry.coordinates.forEach((polygon: any) => {
+          allCoords = allCoords.concat(polygon[0]);
+        });
+      }
+
+      if (allCoords.length > 0) {
+        const lngs = allCoords.map((c) => c[0]);
+        const lats = allCoords.map((c) => c[1]);
+
+        const minLng = Math.min(...lngs);
+        const maxLng = Math.max(...lngs);
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+
+        map.current.fitBounds(
+          [
+            [minLng, minLat],
+            [maxLng, maxLat],
+          ],
+          {
+            padding: 50,
+            duration: 1500,
+            maxZoom: 11,
+          }
+        );
+      }
+    } else {
+      setHighlightedFeature(null);
+    }
+  }, [searchQuery, districtData]);
 
   const handleSearchQuery = (query: string) => {
     setSearchQuery(query);
@@ -303,58 +401,7 @@ export default function Map() {
             : "mr-0"
         }`}
       >
-        <MapContainer
-        center={vietnamCenter}
-        zoom={6}
-        scrollWheelZoom={true}
-        style={{ height: "100%", width: "100%" }}
-      >
-        <LayersControl position="topright">
-          <BaseLayer checked name="Bản đồ đường phố">
-            <TileLayer
-              attribution='&copy; <a href="https://www.esri.com">Esri</a>'
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
-            />
-          </BaseLayer>
-          <BaseLayer name="Vệ tinh">
-            <TileLayer
-              attribution='&copy; <a href="https://www.esri.com">Esri</a>'
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-            />
-          </BaseLayer>
-          <BaseLayer name="Vệ tinh có nhãn">
-            <LayerGroup>
-              <TileLayer
-                attribution='&copy; <a href="https://www.esri.com">Esri</a>'
-                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-              />
-              <TileLayer
-                attribution='&copy; <a href="https://www.esri.com">Esri</a>'
-                url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
-              />
-            </LayerGroup>
-          </BaseLayer>
-          <Overlay checked name="Quận/Huyện">
-            {districtData && (
-              <GeoJSON
-                key={highlightedFeature?.properties?.shapeID || "districts"}
-                data={districtData}
-                style={districtStyle}
-                onEachFeature={onEachDistrictFeature}
-              />
-            )}
-          </Overlay>
-          <Overlay checked name="Nhãn Việt Nam">
-            <VietnamLabelsOverlay />
-          </Overlay>
-        </LayersControl>
-
-        <SearchController
-          searchQuery={searchQuery}
-          districtData={districtData}
-          onHighlight={setHighlightedFeature}
-        />
-      </MapContainer>
+        <div ref={mapContainer} className="h-full w-full" />
       </div>
 
       {/* Map Controls Sidebar - fixed position */}
