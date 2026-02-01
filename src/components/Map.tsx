@@ -169,9 +169,9 @@ export default function Map() {
           .setLngLat(coordinates)
           .setHTML(
             `<div>
-              <h3 class="font-bold">${name}</h3>
+              <h3 class="font-bold text-sm text-black">${name}</h3>
               <p class="text-xs text-gray-600">Cấp: Quận/Huyện</p>
-              <p class="text-xs text-blue-600 mt-1">Double-click để xem chi tiết</p>
+              <p class="text-xs text-blue-600 mt-2">Double-click để xem chi tiết</p>
             </div>`
           )
           .addTo(mapInstance);
